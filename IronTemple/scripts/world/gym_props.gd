@@ -50,7 +50,7 @@ static func bench_press(parent: Node, pos: Vector3, yaw_deg: float, pad_color: C
 	var lifter := BarbellStation.new()
 	lifter.lift = &"bench_press"
 	var root := workout(parent, lifter, &"bench_press", "Bench Press", pos, yaw_deg, Vector3(1.9, 1.25, 2.0))
-	var pad := Build.mat(pad_color.darkened(0.12), 0.6)
+	var pad := Stylized.leather(pad_color.darkened(0.12), 0.6)
 	Build.box(root, Vector3(0.34, 0.09, 1.3), Vector3(0.0, 0.46, 0.3), pad)
 	Build.box(root, Vector3(0.1, 0.06, 1.2), Vector3(0.0, 0.385, 0.3), frame())
 	Build.box(root, Vector3(0.5, 0.06, 0.08), Vector3(0.0, 0.03, 0.9), frame())
@@ -211,9 +211,22 @@ static func round_table(parent: Node, pos: Vector3, radius: float, height: float
 	return root
 
 
+## A decorative model from the library standing at `pos`, `height` metres tall, with no
+## collider. A missing model becomes ModelLoader's procedural stand-in.
+static func prop(parent: Node, id: String, pos: Vector3, yaw_deg: float, height: float, options: Dictionary = {}) -> Node3D:
+	var model := ModelLoader.instantiate(id, height, options)
+	model.position = pos
+	model.rotation_degrees.y = yaw_deg
+	parent.add_child(model)
+	return model
+
+
 static func plant(parent: Node, pos: Vector3, size: float = 1.0) -> Node3D:
 	var root := Build.group(parent, "Plant", pos)
 	Build.drum_blocker(root, 0.25 * size, 0.9 * size, Vector3(0.0, 0.45 * size, 0.0))
+	if ModelLoader.has_model("gym/potted_plant"):
+		root.add_child(ModelLoader.instantiate("gym/potted_plant", 1.25 * size))
+		return root
 	Build.cyl(root, 0.18 * size, 0.42 * size, Vector3(0.0, 0.21 * size, 0.0), Build.mat(Color(0.93, 0.93, 0.95), 0.6), false, Vector3.ZERO, 0.25 * size)
 	var leaf := Build.mat(Color(0.2, 0.62, 0.3), 0.9)
 	Build.ball(root, 0.32 * size, Vector3(0.0, 0.75 * size, 0.0), leaf, Vector3(1.0, 1.25, 1.0), 8)

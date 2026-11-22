@@ -2,14 +2,17 @@
 
 First-person stylized Gym & MMA progression game for **Godot 4.4+** (Forward+ renderer; tested on 4.4.1 and 4.7.2).
 
-**All five steps are in**, and the game is complete: the intro street and a rideable bicycle, a three-storey
+**All six steps are in**, and the game is complete: the intro street and a rideable bicycle, a three-storey
 gym, first-floor training with stats, levelling, visible muscle growth, a pump multiplier and injuries,
 second-floor MMA with first-person striking, heavy bags, a five-fighter ladder and an endless league, a
 living gym (regulars who react to your reputation, a supplement bar on the third floor, synthesized sound
 and music, saving, a pause menu and particle effects), and fast, technical fights: head and body targeting,
 two guards, feints, intercept counters, a chin gauge with knockdowns, the clinch and five opponent styles.
-Everything is built from Godot's primitive meshes and `StandardMaterial3D`, and every sound is synthesized
-in code, so there are no imported assets of any kind: open `project.godot` in the editor and press **F5**.
+Step 6 is a visual overhaul: rigged CC0 character models, skinned first-person arms with MMA gloves drawn
+in their own view-model pass, a stylized PBR look and upgraded lighting. The world is still assembled in
+code and every sound is synthesized; the models and four texture maps in `assets/` are CC0 and fetched by
+`tools/fetch_assets.py` (see [Added in Step 6](#added-in-step-6)). Open `project.godot` in the editor, let
+it import the models, and press **F5**.
 
 ## Controls
 
@@ -538,10 +541,128 @@ CombatHUD (Control)                        scripts/ui/combat_hud.gd, still built
 `FighterProfile` now carries a `style` (and an `alt_style` for league hybrids), `chin`, `composure` and
 `adaptive`; `PlayerStats` gains `get_chin()`. The save format is unchanged, so Step 4 saves load as they are.
 
+### Added in Step 6
+
+A visual overhaul on top of the existing nodes and scripts: no gameplay rule, number, input or save field
+changed, and the two check suites pass unmodified (498 + 665).
+
+**Models.** `tools/fetch_assets.py` downloads 84 CC0 `.glb` models and 4 tiling texture maps into `assets/`
+and derives the first-person arms from the male body (88 downloads + 1 derived file, 21 MB; they are
+committed, so the tool only needs running to refresh or repair them):
+
+```
+assets/models/characters/   rigged Quaternius bodies (male, female) and six hair pieces
+assets/models/hands/        fps_arms.glb: the arms of the male body on the same skeleton
+assets/models/gym/          44 props (weights, benches, machines, lounge furniture)
+assets/models/street/       32 props (cars, street furniture, trees)
+assets/textures/            leather, cloth, rubber and concrete normal maps (ambientCG)
+assets/ASSET_CREDITS.md     source, author and licence of every file; models/manifest.json has the hashes
+```
+
+Every model is checked before it is written (more than 5 KB, `glTF` magic, version 2, declared length equal
+to the file's, a parseable JSON chunk with meshes), so a saved error page can never become a model.
+`python tools/fetch_assets.py --check` re-validates what is on disk, `--force` downloads again,
+`--only gym,street` limits the run and `--list` prints the manifest.
+
+`ModelLoader` (`scripts/visual/model_loader.gd`) loads any `.glb` under `assets/models/` by id:
+
+```gdscript
+var car := ModelLoader.instantiate("street/car_sedan", 4.3, {"fit": ModelLoader.Fit.LONGEST})
+add_child(car)                      # pivot on the floor, model centred over it, facing -Z
+ModelLoader.list("gym")             # every model in a folder; drop a new .glb in and it is found
+```
+
+It measures the model's bounding box, scales it to the height asked for, puts the pivot at floor level and
+turns it to face -Z, then replaces its materials with the stylized PBR pass
+(`shaders/stylized_pbr.gdshader`: the model's own maps, micro surface noise and a light-driven Fresnel rim).
+It reads the editor's import when there is one and parses the raw file when there is not. If a file is
+missing or invalid it returns a multi-part procedural stand-in from `ModelFallbacks` instead, and the
+bodies and arms fall back to the Step 1 to 5 primitive ones: with `assets/` deleted the game still runs and
+the suites still pass with a clean log. `project.godot` sets `importer_defaults/scene` so imported models
+keep their textures embedded rather than scattering PNGs next to them.
+
+**Rendering.** `Environment_world` in `main.tscn`: ACES tone mapping (exposure 1.18, white 6), sharper SSAO,
+SSIL for bounce light, a subtler glow tuned for neon and hit flashes, flat ambient light reduced to match.
+`Sun`: tighter bias and normal bias, re-spaced cascades with blended splits. Project settings: 4096
+directional shadow map and positional atlas, soft shadow filter quality 3, debanding, 8x anisotropic
+filtering, high-quality SSAO. `Build.mat` now goes through `Stylized.standard`, so every flat-colour surface
+in the world gets a `NoiseTexture2D` normal map and roughness map chosen from its gloss and metalness
+(brushed metal, cloth weave, leather grain, skin pores, mottled masonry), triplanar so no UVs are needed,
+plus the shared rim light. Where the scanned maps in `assets/textures/` are present, concrete and rubber
+use them and leather and cloth layer them over the procedural normal as fine detail.
+
+**First-person arms.** `PlayerArms` keeps its two-bone solve and every hand target, and now drives an
+`ArmsRig`: skinned arms with articulated hands. Fingers hang loose at rest, close into fists in the guard,
+open for the clinch and wrap bars and handlebars; the forearm takes half of the hand's roll. Muscle girth,
+definition, veins and a sweat sheen follow `set_physique` (arm level and pump). What the hands wear follows
+the place: bare on the street and in the lounge, athletic wrist wraps in the weight room, fingerless MMA
+gloves over white hand wraps on the fight floor and in any fight (padded and quilted knuckles, stitched
+seams, a hook-and-loop wrist strap). The hands dip out of view for 0.45 s to change. The guard turns the
+gloves' padding to the view and a punch lands with the fist level.
+
+The arms are drawn by a `Viewmodel` pass: their own camera (68° field of view) renders render layer 4 into
+a transparent `SubViewport` laid over the world below the HUD, so they have their own depth buffer and
+cannot clip into a wall, a bag or an opponent, and they are lit and shadowed by the world's lights. While
+the hands grip real equipment the pass eases its field of view to the world camera's and hands the arms
+over to it, so fingers and bars sort correctly, exactly as before.
+
+**Characters.** `CharacterModel` still animates its joint hierarchy (walk cycle, six workout poses, the
+whole `FightAnimator` layer); `CharacterRig` copies that pose onto the imported skeleton every tick: the
+spine shares the torso's lean and twist over three bones, arms follow the shoulder and elbow angles, legs
+are solved so the feet land where the joints put them and flatten onto the floor, fingers close into fists
+or around what the hand holds. Timing is untouched because the choreography is the same code. Clothing
+and gear are drawn by `shaders/character_body.gdshader` from rest-pose masks baked into the mesh, so one
+body dresses everyone:
+
+| Fighter | Look |
+| --- | --- |
+| Noob (Skinny Sam) | lanky, oversized t-shirt, long shorts, rounded shoulders |
+| Pressure (Cardio Carl) | lean, tank top, red gloves over red wraps |
+| Sniper (Counter-King Viktor) | sharp, sleek fight shorts with trim, dark gloves |
+| Dirty Boxer (Brawler Boris) | stocky, wide shoulders, beard, taped fists, chin tucked |
+| Pro / Boss (The Iron Champ, the league) | heavyweight, black and gold gloves, gold trim, a rising aura |
+
+The regulars get a male or female body, a hair piece and a cut of top that stay the same per name, and the
+player's mirror body wears what the first-person hands wear. Glove wind-up glow, name tags, hand props and
+every `CharacterModel` call are unchanged.
+
+Nodes created at run time:
+
+```
+Player/Head/Camera3D/Arms
+├── ArmsRig                  rigged arms (render layer 4)
+└── Viewmodel
+    ├── Pass (SubViewport) / ViewmodelCamera
+    └── Overlay (CanvasLayer -1) / Arms (TextureRect)
+*/Model/Rig                  CharacterRig under every CharacterModel
+EnemyFighter/Aura, AuraLight for the boss and league fighters
+```
+
+Scene files: `main.tscn` (environment and sun), `mirror.tscn` (the mirror camera skips layer 4). Render
+layer 4 is named "Viewmodel". Parked cars, kerb furniture, plants and a few wall-side gym props now come
+from the model library; they add no colliders.
+
+New scripts:
+
+```
+scripts/visual/model_loader.gd      ModelLoader
+scripts/visual/model_fallbacks.gd   ModelFallbacks
+scripts/visual/stylized.gd          Stylized: noise maps, material factories, material conversion
+scripts/visual/character_rig.gd     CharacterRig
+scripts/player/arms_rig.gd          ArmsRig
+scripts/player/viewmodel.gd         Viewmodel
+scripts/combat/fighter_look.gd      FighterLook
+shaders/stylized_pbr.gdshader, shaders/character_body.gdshader
+```
+
 ## Scripts
 
 | Path | Role |
 | --- | --- |
+| `scripts/visual/model_loader.gd`, `model_fallbacks.gd` | `ModelLoader`: loads, normalises and stylizes any `.glb` in `assets/models/`. `ModelFallbacks`: procedural stand-ins |
+| `scripts/visual/stylized.gd` | `Stylized`: procedural noise maps, the material factories behind `Build.mat`, conversion of imported materials |
+| `scripts/visual/character_rig.gd`, `scripts/combat/fighter_look.gd` | `CharacterRig`: the rigged body a `CharacterModel` drives. `FighterLook`: outfit, gear and aura per archetype |
+| `scripts/player/arms_rig.gd`, `viewmodel.gd` | `ArmsRig`: the skinned first-person arms. `Viewmodel`: their render pass |
 | `scripts/autoload/player_stats.gd` | Autoload `PlayerStats`: level, XP, strength, stamina, muscles, pump, warm-up, injury, tenure, rank |
 | `scripts/autoload/game_state.gd` | Autoload `GameState`: objective and toast messages |
 | `scripts/autoload/audio_manager.gd` | Autoload `AudioManager`: mixes sound effects and streams the gym beat through `AudioStreamGenerator` |
@@ -649,6 +770,10 @@ simulator for the balance table above, a sound measurement and a screenshot tour
 - [x] **No stuck input** Leaving a station, the ring, the fight card, the shop and the pause menu each hand
   back movement and the captured mouse; a career reset reloads the world unpaused at normal speed.
 
+Step 6 was checked the same way: both suites pass unchanged with the models loaded, the first-floor, street
+and guard runners pass again with `assets/` removed (procedural fallbacks), and the screenshot tour and
+`tests/visual/lookdev.tscn` were rendered and looked at for the bodies, the fighters, the arms and the lighting.
+
 ## Windows build
 
 `export_presets.cfg` has a **Windows Desktop** preset that produces a single `IronTemple.exe` with the game
@@ -659,4 +784,5 @@ Project → Export → Windows Desktop → Export Project. From a shell:
 godot --headless --path . --export-release "Windows Desktop" build/IronTemple.exe
 ```
 
-The preset leaves `tests/` out of the build.
+The preset leaves `tests/` out of the build. `tools/` holds no resources, so it is not exported either; the
+imported models and textures are.

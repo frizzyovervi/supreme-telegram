@@ -132,6 +132,10 @@ func _build_dressing() -> void:
 	# Round timer on the east wall.
 	Build.box(self, Vector3(0.1, 0.8, 1.8), Vector3(14.5, 3.2, -20.5), Build.mat(Color(0.05, 0.05, 0.07)))
 	Build.text(self, "05:00", Vector3(14.43, 3.2, -20.5), 0.55, RED, Vector3(0.0, -90.0, 0.0), 2.2)
+	# Library props in the back corners.
+	GymProps.prop(self, "gym/fan_standing", Vector3(13.9, 0.02, -24.8), -40.0, 1.5)
+	GymProps.prop(self, "gym/medicine_ball_rack", Vector3(-13.6, 0.02, -24.9), 0.0, 1.1)
+	GymProps.prop(self, "gym/water_bottle", Vector3(-12.6, 0.02, -24.9), 30.0, 0.26)
 
 
 func _build_lighting() -> void:

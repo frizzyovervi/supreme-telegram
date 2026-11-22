@@ -85,6 +85,8 @@ var _focus: Interactable = null
 var _view_blend := 1.0
 var _view_from := Transform3D.IDENTITY
 var _pump_step := -1
+var _gym: Gym = null
+var _body_gear := CharacterRig.Hands.BARE
 
 @onready var head: Node3D = $Head
 @onready var camera: Camera3D = $Head/Camera3D
@@ -103,6 +105,8 @@ func _ready() -> void:
 	PlayerStats.muscle_changed.connect(_apply_physique)
 	PlayerStats.pump_changed.connect(_on_pump_changed)
 	PlayerStats.injured.connect(_on_injured)
+	# The mirror body wears what the first-person hands wear (see `_update_gear`).
+	model.look["hands"] = CharacterRig.Hands.BARE
 	combat.bind(self)
 	_apply_physique()
 	head.global_transform = Transform3D(Basis.from_euler(Vector3(_pitch, _yaw, 0.0)), global_position + Vector3.UP * eye_height)
@@ -205,6 +209,7 @@ func _process(delta: float) -> void:
 	camera.fov = lerpf(camera.fov, base_fov + speed_fov_boost * fast - zoom, 1.0 - exp(-6.0 * delta))
 	var preworkout := PlayerStats.has_preworkout()
 	arms.set_aura(preworkout or PlayerStats.pump_level >= PlayerStats.PUMP_MAX * AURA_PUMP, PREWORKOUT_AURA if preworkout else PUMP_AURA)
+	_update_gear()
 	arms.animate(delta, _stride, _move_amount, _sprint_amount, on_foot and not is_on_floor(), torso)
 
 
@@ -415,3 +420,21 @@ func _on_pump_changed(pump_level: float) -> void:
 
 func _on_injured(_duration: float) -> void:
 	add_shake(1.0)
+
+
+## What the hands wear follows the place: athletic wrist wraps in the weight room, MMA gloves
+## on the fight floor (and in any fight), bare everywhere else. The body in the mirror matches.
+func _update_gear() -> void:
+	if _gym == null:
+		_gym = get_tree().get_first_node_in_group(&"gym") as Gym
+	var gear := CharacterRig.Hands.BARE
+	match _gym.storey_at(global_position) if _gym != null else -1:
+		0:
+			gear = CharacterRig.Hands.WRIST_WRAPS
+		1:
+			gear = CharacterRig.Hands.GLOVES
+	arms.set_gear(gear)
+	var worn := arms.get_gear() as CharacterRig.Hands
+	if worn != _body_gear:
+		_body_gear = worn
+		model.set_hand_gear(worn, arms.glove_color, arms.glove_trim_color)

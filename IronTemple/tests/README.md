@@ -71,3 +71,12 @@ xvfb-run -a -s "-screen 0 1600x900x24" \
 
 Groups are `street`, `gym`, `fight`, `ends`, `bar`, `pause` and `crowd`; leave `--only` out for all of
 them. Drawing is switched off between shots, so only the frames that are saved get rendered.
+
+`visual/lookdev.tscn` is a neutral stage for the Step 6 art: `--set=bodies` (physique range), `fighters`
+(the five ladder looks), `poses` and `workouts` (the rig in every fight and lifting pose), `arms` (the
+first-person view model bare, wrapped and gloved) and `armside` (the arms seen from outside). It takes the
+same display and renderer flags as the tour: `res://tests/visual/lookdev.tscn -- --out=/tmp/look --set=fighters`.
+
+The models have to be imported once before any runner starts (`godot --headless --path . --import`, or
+just opening the editor). A first headless import prints `Parameter "t" is null` once per model: the
+dummy renderer cannot make thumbnails, and the import itself is complete.

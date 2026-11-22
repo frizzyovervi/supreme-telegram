@@ -170,6 +170,7 @@ func setup(fighter: FighterProfile) -> void:
 	# Barefoot, like everyone in the cage.
 	body.shoe_color = fighter.skin
 	body.hair_color = fighter.hair
+	body.look = FighterLook.of(fighter)
 	body.scale = Vector3(1.0, fighter.height, 1.0)
 	body.set_physique(fighter.build.x, fighter.build.y, fighter.build.z)
 
@@ -192,6 +193,8 @@ func _ready() -> void:
 		material.emission_energy_multiplier = 0.0
 		FightGear.glove(model.get_hand(i), material, Color(0.95, 0.95, 0.97))
 		_glove_materials.append(material)
+	if model.look.has("aura"):
+		FighterLook.add_aura(self, model.look["aura"], 1.9 * profile.height)
 	name_tag.text = "%s\n%s" % [profile.fighter_name.to_upper(), profile.get_tag()]
 	name_tag.position.y = 1.95 * profile.height + 0.42
 	telegraph.position.y = 1.95 * profile.height + 0.16
@@ -1068,3 +1071,4 @@ func _hide_cue() -> void:
 
 func _glow(side: int, amount: float) -> void:
 	_glove_materials[side].emission_energy_multiplier = 2.5 * amount
+	model.set_glove_glow(side, 2.5 * amount, _glove_materials[side].emission)

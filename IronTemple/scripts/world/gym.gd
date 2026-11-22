@@ -31,7 +31,16 @@ const LININGS: Array[Color] = [Color(0.86, 0.87, 0.9), Color(0.25, 0.25, 0.3), C
 var _interiors: Array[Node3D] = []
 
 
+## Storey (0 weight room, 1 fight hall, 2 lounge) a world position is on, or -1 outside the gym.
+func storey_at(world_position: Vector3) -> int:
+	var local := to_local(world_position)
+	if absf(local.x) > WIDTH * 0.5 or local.z > 0.0 or local.z < -DEPTH or local.y < -0.6:
+		return -1
+	return clampi(floori((local.y + 0.6) / STOREY_HEIGHT), 0, STOREYS - 1)
+
+
 func _ready() -> void:
+	add_to_group(&"gym")
 	for child in get_children():
 		if child is Node3D:
 			_interiors.append(child)

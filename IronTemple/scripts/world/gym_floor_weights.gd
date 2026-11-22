@@ -86,6 +86,11 @@ func _build_dressing() -> void:
 	GymProps.plant(self, Vector3(-2.9, 0.02, -1.1), 1.2)
 	GymProps.plant(self, Vector3(2.9, 0.02, -1.1), 1.2)
 	GymProps.plant(self, Vector3(9.4, 0.02, -24.8), 1.3)
+	# Library props tucked against the walls, clear of every station and walkway.
+	GymProps.prop(self, "gym/water_cooler", Vector3(4.5, 0.02, -0.75), 180.0, 1.35)
+	GymProps.prop(self, "gym/fan_standing", Vector3(-4.6, 0.02, -0.9), 160.0, 1.5)
+	GymProps.prop(self, "gym/radio_boombox", Vector3(8.2, 0.02, -25.1), 0.0, 0.34)
+	GymProps.prop(self, "gym/trashcan", Vector3(10.5, 0.02, -25.0), 0.0, 0.7)
 	# Accent stripe around the room at rail height.
 	var stripe := Build.mat(ACCENT, 0.6)
 	Build.box(self, Vector3(29.2, 0.14, 0.02), Vector3(0.0, 4.45, -25.58), stripe)

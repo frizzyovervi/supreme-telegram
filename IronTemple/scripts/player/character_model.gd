@@ -34,6 +34,13 @@ var pose_offset := Vector3.ZERO
 ## poses by `fight_blend` (0 to 1).
 var fight_pose: FightPose = null
 var fight_blend := 0.0
+## Outfit overrides for the rigged body, read once when the model is built (see
+## CharacterRig.dress): "body" (&"male" or &"female"), "hair", "top", "hands" and so on.
+## Anything left out follows the colours above.
+var look: Dictionary = {}
+## The rigged body drawn over the joints, or null when no character model could be loaded and
+## the primitive body below is shown instead.
+var rig: CharacterRig = null
 
 var _arms_girth := 0.0
 var _torso_girth := 0.0
@@ -57,6 +64,8 @@ var _knees: Array[Node3D] = []
 var _hands: Array[Node3D] = []
 # Girth-dependent meshes, one entry per side.
 var _parts: Array[Dictionary] = []
+# Every mesh of the primitive body, hidden while the rig is shown.
+var _primitives: Array[MeshInstance3D] = []
 
 var _ride_blend := 0.0
 var _pose_blend := 0.0
@@ -76,6 +85,7 @@ var _root_rot := Vector3.ZERO
 
 func _ready() -> void:
 	_build()
+	_attach_rig()
 	_apply_physique()
 
 
@@ -92,6 +102,42 @@ func set_physique(arms: float, torso: float, legs: float, pump: float = 0.0) -> 
 ## Attachment point at the end of a forearm (0 = left, 1 = right) for held props.
 func get_hand(index: int) -> Node3D:
 	return _hands[index]
+
+
+## Dresses the rigged body from the colours above and `look`. Call again after changing either.
+func refresh_look() -> void:
+	if rig == null:
+		return
+	var bare := shirt_color.is_equal_approx(skin_color)
+	var outfit := {
+		"skin": skin_color,
+		"hair_color": hair_color,
+		"hair": "characters/hair_buzzed",
+		"shorts": shorts_color,
+		"shorts_trim": shorts_color.lightened(0.55),
+		"top": CharacterRig.Top.BARE if bare else CharacterRig.Top.TEE,
+		"top_color": shirt_color,
+		"top_trim": shirt_color.darkened(0.3),
+		"shoes": not shoe_color.is_equal_approx(skin_color),
+		"shoe_color": shoe_color,
+	}
+	outfit.merge(look, true)
+	rig.dress(outfit)
+
+
+## Puts gear on the rigged hands (a CharacterRig.Hands value). Returns false when the body is
+## the primitive one, which wears FightGear's own glove instead.
+func set_hand_gear(style: int, color: Color = Color(0.1, 0.1, 0.13), trim: Color = Color(0.95, 0.95, 0.97)) -> bool:
+	if rig == null:
+		return false
+	rig.dress({"hands": style, "glove_color": color, "glove_trim": trim})
+	return true
+
+
+## Lights one glove of the rigged body (0 = left, 1 = right) for a wind-up.
+func set_glove_glow(side: int, amount: float, color: Color) -> void:
+	if rig != null:
+		rig.set_glove_glow(side, amount, color)
 
 
 ## Call once per physics tick. `stride_phase` advances with distance walked, `pedal_phase` with
@@ -135,6 +181,25 @@ func animate(delta: float, stride_phase: float, move_amount: float, look_pitch: 
 	_head.rotation.x = _head_x
 	position = _root_pos
 	rotation = _root_rot
+	if rig != null:
+		_pose_rig()
+
+
+# Hands close around bars and into fists, and turn to the grip the pose calls for.
+func _pose_rig() -> void:
+	var lifting := _pose_blend if _shown_pose != Pose.STRETCH else 0.0
+	var twist := 0.0
+	match _shown_pose:
+		Pose.CURL:
+			twist = 1.35 * _pose_blend
+		Pose.BENCH, Pose.SQUAT, Pose.DEADLIFT, Pose.PUSHUP:
+			twist = -1.45 * _pose_blend
+	for i in 2:
+		var holding := 0.85 if _holds(_hands[i]) else 0.0
+		var grip := 0.05 if _shown_pose == Pose.PUSHUP and _pose_blend > 0.5 else 0.9 * lifting
+		rig.fist[i] = clampf(maxf(0.28, maxf(maxf(fight_blend, holding), grip)), 0.0, 1.0)
+		rig.hand_twist[i] = twist
+	rig.pose(transform)
 
 
 ## Overrides the walk targets with the workout pose, weighted by `blend`.
@@ -283,6 +348,27 @@ func _build() -> void:
 
 	for mesh: MeshInstance3D in find_children("*", "MeshInstance3D", true, false):
 		mesh.layers = render_layers
+		_primitives.append(mesh)
+
+
+# True when something other than a glove hangs off the hand attachment.
+func _holds(hand: Node3D) -> bool:
+	for child in hand.get_children():
+		if not String(child.name).begins_with("Glove"):
+			return true
+	return false
+
+
+# Swaps the primitive body for the rigged one when a character model is available.
+func _attach_rig() -> void:
+	rig = CharacterRig.create(look.get("body", &"male"), render_layers)
+	if rig == null:
+		return
+	add_child(rig)
+	rig.bind(_hips, _torso, _head, _shoulders, _elbows, _hands, _legs, _knees)
+	for mesh in _primitives:
+		mesh.visible = false
+	refresh_look()
 
 
 func _apply_physique() -> void:
@@ -320,11 +406,13 @@ func _apply_physique() -> void:
 		_scale(part, "shin", Vector3(shin, SHIN, shin))
 		_scale(part, "calf", Vector3(1.0, 2.3, 1.15) * shin * lerpf(0.9, 1.42, leg))
 		var pec := part["pec"] as Node3D
-		pec.visible = torso > 0.12
+		pec.visible = torso > 0.12 and rig == null
 		pec.scale = Vector3(chest.x * 0.43, 0.11, 0.012 + 0.02 * torso)
 		pec.position = Vector3(side * chest.x * 0.235, 0.405, 0.004 - (chest.y + pec.scale.z) * 0.5)
 	_hang = 0.07 + 0.11 * torso
 	_chest_out = 0.035 * torso
+	if rig != null:
+		rig.set_physique(arm, torso, leg, _pump)
 
 
 func _scale(part: Dictionary, key: String, size: Vector3) -> void:

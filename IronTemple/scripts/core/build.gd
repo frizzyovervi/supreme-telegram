@@ -8,19 +8,11 @@ static var _materials: Dictionary = {}
 static var _meshes: Dictionary = {}
 
 
-## Matte flat-colour material. Colours with alpha below 1 become double-sided transparent.
+## Flat-colour material with the stylized finish its gloss suggests: brushed grain on metal,
+## weave on matte cloth and paint, mottling on masonry (see Stylized). Colours with alpha below 1
+## become plain double-sided transparent.
 static func mat(color: Color, roughness: float = 0.85, metallic: float = 0.0) -> StandardMaterial3D:
-	var key := "mat/%s/%.2f/%.2f" % [color.to_html(), roughness, metallic]
-	if not _materials.has(key):
-		var material := StandardMaterial3D.new()
-		material.albedo_color = color
-		material.roughness = roughness
-		material.metallic = metallic
-		if color.a < 1.0:
-			material.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
-			material.cull_mode = BaseMaterial3D.CULL_DISABLED
-		_materials[key] = material
-	return _materials[key]
+	return Stylized.standard(color, roughness, metallic, Stylized.guess(roughness, metallic))
 
 
 ## Self-lit material for neon, screens and lamps; blooms through the environment glow.

@@ -47,6 +47,11 @@ var _south_z := 0.0
 var _plaza_z := 0.0
 
 
+## Models for the parked cars and the kerb furniture ([id, height in metres]); see ModelLoader.
+const CAR_MODELS: Array[String] = ["street/car_sedan", "street/car_taxi", "street/car_suv", "street/car_hatchback", "street/car_van", "street/car_police"]
+const KERB_MODELS: Array = [["street/fire_hydrant", 0.8], ["street/litter_bin", 1.0], ["street/post_box", 1.25], ["street/traffic_cone", 0.7], ["street/bench_street", 0.9]]
+
+
 func _ready() -> void:
 	_rng.seed = layout_seed
 	_south_z = first_lot_z + lot_pitch * 0.5 + 4.0
@@ -273,7 +278,24 @@ func _build_street_props() -> void:
 	# Parked cars hug the kerbs, leaving the lane clear for the bike.
 	var slots: Array[Vector2] = [Vector2(-1.0, 12.0), Vector2(1.0, -28.0), Vector2(-1.0, -52.0), Vector2(1.0, -86.0), Vector2(-1.0, -150.0), Vector2(1.0, -176.0)]
 	for i in slots.size():
-		_car(Vector3(slots[i].x * 2.95, 0.0, slots[i].y), 0.0 if slots[i].x > 0.0 else 180.0, CAR_PAINTS[i % CAR_PAINTS.size()])
+		_car(Vector3(slots[i].x * 2.95, 0.0, slots[i].y), 0.0 if slots[i].x > 0.0 else 180.0, CAR_PAINTS[i % CAR_PAINTS.size()], CAR_MODELS[i % CAR_MODELS.size()])
+	_dress_kerbs()
+
+
+## Small street furniture from the model library on the kerb beside every lamp: purely for
+## show, with no colliders, so the walk and the ride to the gym are exactly as before.
+func _dress_kerbs() -> void:
+	var index := 0
+	var z := _south_z - 16.0
+	while z > _plaza_z + 5.0:
+		var side := 1.0 if index % 2 == 0 else -1.0
+		var spec: Array = KERB_MODELS[index % KERB_MODELS.size()]
+		var prop := ModelLoader.instantiate(spec[0], spec[1])
+		prop.position = Vector3(side * (ROAD_HALF_WIDTH + 1.25), 0.0, z + 1.6)
+		prop.rotation_degrees.y = -90.0 * side
+		add_child(prop)
+		index += 1
+		z -= 26.0
 
 
 func _lamp(pos: Vector3) -> void:
@@ -286,8 +308,13 @@ func _lamp(pos: Vector3) -> void:
 	Build.box(lamp, Vector3(0.5, 0.05, 0.26), Vector3(inward * 1.6, 5.29, 0.0), Build.glow(Color(1.0, 0.92, 0.7), 2.0))
 
 
-func _car(pos: Vector3, yaw: float, paint: Color) -> void:
+## A parked car: the model from the library when there is one, else the boxy one built here.
+func _car(pos: Vector3, yaw: float, paint: Color, model: String = "") -> void:
 	var car := Build.group(self, "Car", pos, yaw)
+	if ModelLoader.has_model(model):
+		Build.blocker(car, Vector3(1.85, 1.5, 4.3), Vector3(0.0, 0.75, 0.0))
+		car.add_child(ModelLoader.instantiate(model, 4.3, {"fit": ModelLoader.Fit.LONGEST}))
+		return
 	var body := Build.mat(paint, 0.35, 0.2)
 	var dark_glass := Build.mat(Color(0.12, 0.16, 0.22), 0.1, 0.3)
 	Build.blocker(car, Vector3(1.85, 1.5, 4.3), Vector3(0.0, 0.75, 0.0))

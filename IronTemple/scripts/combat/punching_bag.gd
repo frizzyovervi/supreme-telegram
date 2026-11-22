@@ -72,7 +72,7 @@ func _build() -> void:
 	_pivot = Build.group(self, "Pivot", Vector3(0.0, mount_height, 0.0))
 	_bag = Build.group(_pivot, "Bag", Vector3(0.0, -_length, 0.0))
 	var half := BAG_LENGTH * 0.5
-	Build.cyl(_bag, BAG_RADIUS, BAG_LENGTH, Vector3.ZERO, Build.mat(color, 0.55))
+	Build.cyl(_bag, BAG_RADIUS, BAG_LENGTH, Vector3.ZERO, Stylized.leather(color, 0.55))
 	Build.cyl(_bag, BAG_RADIUS + 0.005, 0.07, Vector3(0.0, half, 0.0), GymProps.frame())
 	Build.cyl(_bag, BAG_RADIUS + 0.005, 0.07, Vector3(0.0, -half, 0.0), GymProps.frame())
 	Build.cyl(_bag, BAG_RADIUS + 0.003, 0.14, Vector3(0.0, 0.3, 0.0), Build.mat(Color(0.95, 0.95, 0.97), 0.6))

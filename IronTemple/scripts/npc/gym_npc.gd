@@ -25,6 +25,8 @@ const BUBBLE_SIZE := 0.0026
 ## Bag work timing: wind-up, strike, recovery.
 const PUNCH := Vector3(0.16, 0.09, 0.26)
 const PUNCHES: Array[StringName] = [Strike.JAB, Strike.JAB, Strike.CROSS, Strike.HOOK]
+## Regulars drawn with the female body.
+const FEMALE_NAMES: Array[String] = ["Dana", "Lena", "Tasha", "Priya", "Chloe", "Kat", "Nora"]
 
 var npc_name := "Mike"
 var level := 1
@@ -107,6 +109,7 @@ func setup(spec: Dictionary) -> void:
 	body.shirt_color = spec.get("shirt", body.shirt_color)
 	body.shorts_color = spec.get("shorts", body.shorts_color)
 	body.shoe_color = spec.get("shoes", body.shoe_color)
+	body.look = _look_of(npc_name, spec)
 	body.scale = Vector3(1.0, _height, 1.0)
 	body.set_physique(build.x, build.y, build.z)
 
@@ -495,3 +498,22 @@ func _equip() -> void:
 			var padding := Build.mat(Color(0.85, 0.15, 0.15), 0.5)
 			for i in 2:
 				FightGear.glove(model.get_hand(i), padding, Color(0.95, 0.95, 0.97))
+
+
+## Body, hair and cut of the top for a regular, steady per name so everyone is recognisable.
+## A spec may override any of it with a "look" dictionary (see CharacterRig.dress).
+@warning_ignore("integer_division")
+static func _look_of(regular: String, spec: Dictionary) -> Dictionary:
+	var pick := absi(regular.hash())
+	var female := FEMALE_NAMES.has(regular)
+	var look := {"body": &"female" if female else &"male"}
+	if female:
+		look["hair"] = ["characters/hair_long", "characters/hair_buns", "characters/hair_buzzed_female"][pick % 3]
+		look["top"] = [CharacterRig.Top.CROP, CharacterRig.Top.TANK, CharacterRig.Top.TEE][(pick / 3) % 3]
+		look["shorts_len"] = 0.2 + 0.05 * ((pick / 9) % 3)
+	else:
+		look["hair"] = ["characters/hair_buzzed", "characters/hair_parted", ["characters/hair_buzzed", "characters/hair_beard"], ""][pick % 4]
+		look["top"] = [CharacterRig.Top.TEE, CharacterRig.Top.TANK, CharacterRig.Top.TEE][(pick / 4) % 3]
+		look["shorts_len"] = 0.24 + 0.05 * ((pick / 12) % 3)
+	look.merge(spec.get("look", {}), true)
+	return look

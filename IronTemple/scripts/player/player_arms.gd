@@ -4,20 +4,39 @@ extends Node3D
 ## (idle breathing, walk and sprint swing) or on grips supplied by a vehicle or workout station,
 ## so a new pose only needs hand targets. `set_physique` thickens the arms as the player grows.
 ##
-## The fight stance (set by CombatController) pulls MMA gloves on, raises the hands into a guard
-## and plays punches, the block and a first-person kick. `play_drink` lifts a shaker to the
-## mouth; `set_aura` makes the forearms steam at a full pump or on pre-workout.
+## The solve drives an ArmsRig: rigged, skinned arms with articulated hands whose fingers close
+## into fists and around bars, and whose muscle, veins and sweat follow the player's training.
+## They are drawn by a Viewmodel pass with its own depth and field of view, so they never clip
+## into the world. If no arm model can be loaded the primitive arms below are shown instead.
+##
+## The fight stance (set by CombatController) raises the hands into a guard and plays punches,
+## the block and a first-person kick. `set_gear` picks what the hands wear: bare, athletic
+## wrist wraps for the weight room or fingerless MMA gloves over hand wraps; a fight always
+## puts the gloves on. `play_drink` lifts a shaker to the mouth; `set_aura` makes the forearms
+## steam at a full pump or on pre-workout.
 
 const UPPER_LENGTH := 0.36
 const FOREARM_LENGTH := 0.34
 ## Render layer 2: seen by the player camera, hidden from mirror cameras.
 const FIRST_PERSON_LAYER := 2
+## Render layer 4: drawn by the Viewmodel pass (the arms and everything attached to them).
+const VIEWMODEL_LAYER := Viewmodel.LAYER
 const DEPTH_PULL := 0.9
+## Seconds the hands dip out of view to change what they wear.
+const EQUIP_TIME := 0.45
 ## Shoulder position and elbow direction for the right arm in the torso frame; x mirrors for the left.
 const DEFAULT_SHOULDER := Vector3(0.2, -0.25, -0.05)
 const DEFAULT_POLE := Vector3(0.6, -1.0, 0.25)
 ## Distance from the wrist to the middle of the fist, so a held bar sits in the palm.
 const PALM_OFFSET := 0.055
+## The same for the rigged hand, whose palm is longer than the primitive fist.
+const RIG_PALM_OFFSET := 0.085
+## The shirt sleeve over the top of a rigged arm: its radius and how far down the arm it reaches.
+const SLEEVE_RADIUS := 0.076
+const SLEEVE_OVERLAP := 0.13
+## The rigged forearms are fuller than the primitive ones: the high guard opens this much
+## wider (metres per hand) so the opponent stays in view between the gloves.
+const RIG_BLOCK_SPREAD := 0.04
 
 # Fight stance in view space, for the right arm; x mirrors for the left.
 const GUARD_SHOULDER := Vector3(0.2, -0.3, 0.07)
@@ -79,6 +98,7 @@ void fragment() {
 @export var sleeve_color := Color(0.16, 0.62, 0.86)
 @export var glove_color := Color(0.1, 0.1, 0.13)
 @export var glove_trim_color := Color(0.66, 0.45, 1.0)
+@export var wrap_color := Color(0.93, 0.92, 0.88)
 @export var shorts_color := Color(0.13, 0.15, 0.22)
 @export var shoe_color := Color(0.93, 0.25, 0.2)
 
@@ -93,6 +113,10 @@ var dazed := false
 var clinched := false
 ## Speeds up the fight animations when the world is in slow motion.
 var fight_time_scale := 1.0
+## The rigged arms, or null when the primitive ones are shown.
+var rig: ArmsRig = null
+## The pass that draws the arms, or null when they are not under a camera.
+var viewmodel: Viewmodel = null
 
 
 class Arm:
@@ -110,12 +134,20 @@ class Arm:
 	var held_axis := Vector3.RIGHT
 	var held_shoulder := Vector3.ZERO
 	var held_pole := Vector3.DOWN
+	# The last solve, for the rig.
+	var shoulder_at := Vector3.ZERO
+	var elbow_at := Vector3.ZERO
+	var bend := Vector3.DOWN
+	# Shirt sleeve from the real shoulder over the top of the rigged arm.
+	var sleeve: MeshInstance3D
 	var glove: Node3D
 	# The punch in progress, or &"".
 	var strike: StringName = &""
 	var strike_time := 0.0
 	var strike_startup := 0.1
 	var strike_recovery := 0.2
+	# How far the punch in progress is out, 0 to 1.
+	var reach := 0.0
 	# Seconds into a feint's twitch, or -1.
 	var feint := -1.0
 	var feint_low := false
@@ -154,6 +186,11 @@ var _bottle: Node3D
 var _drink_material: ShaderMaterial
 var _auras: Array[GPUParticles3D] = []
 var _aura_process: ParticleProcessMaterial
+var _palm_offset := PALM_OFFSET
+# What the hands wear outside a fight, what they wear now and the change in progress.
+var _area_gear := CharacterRig.Hands.BARE
+var _gear := CharacterRig.Hands.BARE
+var _equip := -1.0
 
 
 func _ready() -> void:
@@ -180,6 +217,12 @@ func _ready() -> void:
 	_build_leg(skin, _material(shader, shorts_color), _material(shader, shoe_color))
 	_build_bottle(_arms[1].hand, shader)
 	_build_auras()
+	_build_rig()
+	if get_parent() is Camera3D:
+		viewmodel = Viewmodel.new()
+		viewmodel.name = "Viewmodel"
+		add_child(viewmodel)
+		viewmodel.setup(get_parent() as Camera3D)
 	set_physique(0.0, 0.0)
 
 
@@ -212,6 +255,8 @@ func set_physique(arms: float, pump: float = 0.0, legs: float = 0.0) -> void:
 		fore.rings = 1
 		arm.elbow.scale = Vector3.ONE * elbow_radius
 		arm.hand.scale = Vector3.ONE * lerpf(1.0, 1.15, _girth)
+	if rig != null:
+		rig.set_arm_physique(_girth, clampf(pump, 0.0, 1.0))
 
 
 ## Hands hold these nodes (handlebar grips, a barbell, dumbbells) until called again with nulls.
@@ -271,6 +316,17 @@ func is_drinking() -> bool:
 	return _drink_time >= 0.0
 
 
+## What the hands wear outside a fight (a CharacterRig.Hands value): the hands dip out of
+## view, change and come back. A fight stance always wears the gloves.
+func set_gear(style: int) -> void:
+	_area_gear = style as CharacterRig.Hands
+
+
+## What the hands are wearing right now (a CharacterRig.Hands value).
+func get_gear() -> int:
+	return _gear
+
+
 ## Turns the glow rising off the forearms on or off.
 func set_aura(active: bool, color: Color = Color.WHITE) -> void:
 	if active:
@@ -328,17 +384,21 @@ func animate(delta: float, stride_phase: float, move_amount: float, sprint_amoun
 			drink = smoothstep(0.0, 0.3, _drink_time) * (1.0 - smoothstep(DRINK_TIME - 0.35, DRINK_TIME, _drink_time))
 			tip = sin(clampf((_drink_time - 0.3) / (DRINK_TIME - 0.65), 0.0, 1.0) * PI)
 	_bottle.visible = drink > 0.02
-	# Holding real geometry needs true depth so hands and equipment sort correctly.
-	var pull := 0.0 if _grip_blend > 0.0 else DEPTH_PULL
+	# Holding real geometry needs true depth so hands and equipment sort correctly: the pass
+	# hands the arms to the world camera for as long as they grip.
+	var pull := 0.0 if _grip_blend > 0.0 or viewmodel != null else DEPTH_PULL
 	for material in _materials:
 		material.set_shader_parameter("depth_pull", pull)
+	if viewmodel != null:
+		viewmodel.hold_world(_grip_blend > 0.0)
+	var dip := _update_gear(delta, gripping)
 
 	var blend := smoothstep(0.0, 1.0, _grip_blend)
 	var to_arm_space := global_transform.basis.inverse()
 	for index in 2:
 		var arm := _arms[index]
 		var side := arm.side
-		arm.glove.visible = _stance > 0.02
+		arm.glove.visible = rig == null and (_stance > 0.02 or _gear == CharacterRig.Hands.GLOVES)
 		if arm.grip != null:
 			var grip := arm.grip.get_global_transform_interpolated()
 			arm.held_hand = to_local(grip.origin)
@@ -353,15 +413,24 @@ func animate(delta: float, stride_phase: float, move_amount: float, sprint_amoun
 			shoulder = shoulder.lerp(_fight_shoulder, stance)
 			hand = hand.lerp(_fight_hand, stance)
 			pole = pole.lerp(_fight_pole, stance)
-		var roll := side * deg_to_rad(75.0)
+		# Thumbs up at ease; in the guard the gloves turn their padding to the view, and a
+		# punch lands with the fist level.
+		var roll := side * deg_to_rad(lerpf(lerpf(66.0, 30.0, stance), 8.0, arm.reach * stance))
 		if index == 1 and drink > 0.0:
 			shoulder = shoulder.lerp(DRINK_SHOULDER, drink)
 			hand = hand.lerp(DRINK_HAND + DRINK_TIP * tip, drink)
 			pole = pole.lerp(DRINK_POLE, drink)
 			roll = lerpf(roll, deg_to_rad(100.0 + 40.0 * tip), drink)
+		hand.y -= dip * (1.0 - blend)
 		shoulder = shoulder.lerp(arm.held_shoulder, blend)
 		hand = hand.lerp(arm.held_hand, blend)
 		pole = pole.lerp(arm.held_pole, blend)
+		if rig != null:
+			# Loose fingers at rest, fists in the guard, open palms in a clinch, a full grip on a bar.
+			var closed := lerpf(0.34 + 0.03 * sin(_breath * 1.3 + side), 1.0, stance)
+			closed = lerpf(closed, 0.2, smoothstep(0.0, 1.0, _clinch) * stance)
+			closed = lerpf(closed, 0.9, drink if index == 1 else 0.0)
+			rig.fist[index] = lerpf(closed, 0.95, blend)
 		_solve(arm, shoulder, hand, pole, roll * (1.0 - blend), blend)
 	_animate_kick(fight_delta)
 
@@ -397,6 +466,8 @@ func _fight_arm(arm: Arm, index: int, delta: float, phase: float, move: float) -
 	var block := smoothstep(0.0, 1.0, _block)
 	var low := smoothstep(0.0, 1.0, _low)
 	hand = hand.lerp(_mirrored(BLOCK_HAND.lerp(BLOCK_LOW_HAND, low), side), block)
+	if rig != null:
+		hand.x += side * RIG_BLOCK_SPREAD * block * (1.0 - low)
 	pole = pole.lerp(_mirrored(BLOCK_POLE.lerp(BLOCK_LOW_POLE, low), side), block)
 	if _clinch > 0.0:
 		# Palms on the opponent's chest, heaving at every push.
@@ -415,6 +486,7 @@ func _fight_arm(arm: Arm, index: int, delta: float, phase: float, move: float) -
 			hand += Vector3(-0.02 * side, -0.09 if arm.feint_low else 0.012, -0.17) * twitch
 			shoulder += Vector3(-0.03 * side, 0.0, -0.09) * twitch
 
+	arm.reach = 0.0
 	if arm.strike != &"":
 		arm.strike_time += delta
 		var path: Dictionary = STRIKE_PATHS[arm.strike]
@@ -437,6 +509,7 @@ func _fight_arm(arm: Arm, index: int, delta: float, phase: float, move: float) -
 		hand = hand.lerp(via, reach).lerp(via.lerp(end, reach), reach)
 		hand.z += drawn
 		shoulder += _mirrored(path["follow"], side) * reach
+		arm.reach = reach
 		pole = pole.lerp(_mirrored(path["pole"], side), minf(reach * 1.6, 1.0))
 	_fight_shoulder = shoulder
 	_fight_hand = hand
@@ -473,7 +546,7 @@ func _solve(arm: Arm, shoulder: Vector3, target: Vector3, pole: Vector3, roll: f
 	var forearm := _place(arm, shoulder, target, pole)
 	if hold > 0.0:
 		# Second pass: back the wrist off so the grip sits in the palm.
-		forearm = _place(arm, shoulder, target - forearm * PALM_OFFSET * hold, pole)
+		forearm = _place(arm, shoulder, target - forearm * _palm_offset * hold, pole)
 	var orientation := Build.basis_along(forearm) * Basis(Vector3.UP, roll)
 	var across := arm.held_axis - forearm * arm.held_axis.dot(forearm)
 	if hold > 0.0 and across.length_squared() > 0.001:
@@ -481,6 +554,16 @@ func _solve(arm: Arm, shoulder: Vector3, target: Vector3, pole: Vector3, roll: f
 		across = across.normalized() * (1.0 if across.x >= 0.0 else -1.0)
 		orientation = orientation.slerp(Basis(across, forearm, across.cross(forearm)), hold)
 	arm.hand.transform = Transform3D(orientation, arm.wrist)
+	if rig != null:
+		var index := 0 if arm.side < 0.0 else 1
+		rig.pose_arm(index, arm.shoulder_at, arm.elbow_at, arm.wrist, arm.bend, orientation)
+		# The rig keeps its own bone lengths from the wrist back, so its shoulder floats ahead
+		# of the real one: the sleeve bridges the two and hides the cut.
+		var top := rig.shoulder_of(index)
+		var into := top + (arm.elbow_at - arm.shoulder_at).normalized() * SLEEVE_OVERLAP
+		var span := into - arm.shoulder_at
+		(arm.sleeve.mesh as CapsuleMesh).height = maxf(span.length(), SLEEVE_RADIUS * 2.0)
+		arm.sleeve.transform = Transform3D(Build.basis_along(span), (into + arm.shoulder_at) * 0.5)
 
 
 ## Positions the upper arm and forearm so the wrist reaches `target`; returns the forearm direction.
@@ -494,6 +577,9 @@ func _place(arm: Arm, shoulder: Vector3, target: Vector3, pole: Vector3) -> Vect
 	var bend := (pole - direction * pole.dot(direction)).normalized()
 	var elbow := shoulder + direction * along + bend * out
 	var forearm := (arm.wrist - elbow).normalized()
+	arm.shoulder_at = shoulder
+	arm.elbow_at = elbow
+	arm.bend = bend
 	arm.upper.transform = Transform3D(Build.basis_along(elbow - shoulder), (shoulder + elbow) * 0.5)
 	arm.fore.transform = Transform3D(Build.basis_along(forearm), (elbow + arm.wrist) * 0.5)
 	return forearm
@@ -613,7 +699,7 @@ func _build_auras() -> void:
 		aura.emitting = false
 		aura.process_material = _aura_process
 		aura.draw_pass_1 = mote
-		aura.layers = FIRST_PERSON_LAYER
+		aura.layers = VIEWMODEL_LAYER
 		aura.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 		aura.visibility_aabb = AABB(Vector3(-1.0, -1.0, -1.0), Vector3(2.0, 2.0, 2.0))
 		arm.fore.add_child(aura)
@@ -638,7 +724,52 @@ func _part(parent: Node3D, mesh: Mesh, material: Material) -> MeshInstance3D:
 	var node := MeshInstance3D.new()
 	node.mesh = mesh
 	node.material_override = material
-	node.layers = FIRST_PERSON_LAYER
+	node.layers = VIEWMODEL_LAYER
 	node.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	parent.add_child(node)
 	return node
+
+
+## Loads the rigged arms and, if they are there, takes the primitive ones out of every camera
+## (their nodes stay: the shaker and the aura hang off them).
+func _build_rig() -> void:
+	rig = ArmsRig.create_arms(VIEWMODEL_LAYER)
+	if rig == null:
+		return
+	add_child(rig)
+	rig.dress({"skin": skin_color, "top": CharacterRig.Top.TEE, "top_color": sleeve_color, "top_trim": sleeve_color.darkened(0.3), "hands": _gear, "glove_color": glove_color, "glove_trim": glove_trim_color, "wrap_color": wrap_color})
+	_palm_offset = RIG_PALM_OFFSET
+	var cloth := Stylized.fabric(sleeve_color)
+	for arm in _arms:
+		var capsule := CapsuleMesh.new()
+		capsule.radius = SLEEVE_RADIUS
+		capsule.radial_segments = 16
+		capsule.rings = 6
+		arm.sleeve = _part(self, capsule, cloth)
+		for mesh: MeshInstance3D in [arm.upper, arm.cuff, arm.bulge, arm.fore, arm.elbow]:
+			mesh.layers = 0
+		for mesh in arm.hand.find_children("*", "MeshInstance3D", true, false):
+			if not _bottle.is_ancestor_of(mesh):
+				(mesh as MeshInstance3D).layers = 0
+
+
+## Works out what the hands should wear and runs the change: returns how far (in metres) the
+## free hands are dipped out of view while it happens.
+func _update_gear(delta: float, gripping: bool) -> float:
+	var wanted := _area_gear
+	if fight_stance and not gripping:
+		wanted = CharacterRig.Hands.GLOVES
+	if wanted != _gear and _equip < 0.0:
+		_equip = 0.0
+	if _equip < 0.0:
+		return 0.0
+	_equip += delta / EQUIP_TIME
+	# Swap at the bottom of the dip, or at once when the hands are busy on a grip.
+	if (_equip >= 0.5 or gripping) and wanted != _gear:
+		_gear = wanted
+		if rig != null:
+			rig.dress({"hands": _gear})
+	if _equip >= 1.0:
+		_equip = -1.0
+		return 0.0
+	return sin(_equip * PI) * 0.26
