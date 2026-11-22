@@ -4,7 +4,9 @@ shader_type spatial;
 // rest pose (baked into CUSTOM0 by CharacterRig: xyz in metres, w = thumb weight), so shorts,
 // shirts, shoes, hand wraps and MMA gloves follow the skin exactly however the rig is posed.
 // The rest pose must be a T-pose facing +Z.
-render_mode blend_mix, depth_draw_opaque, cull_back, diffuse_burley, specular_schlick_ggx;
+render_mode blend_mix, depth_draw_opaque, cull_back;
+
+#include "res://shaders/stylized_light.gdshaderinc"
 
 uniform sampler2D albedo_tex : source_color, filter_linear_mipmap_anisotropic, repeat_enable;
 uniform vec3 skin_tint = vec3(1.0);
@@ -58,9 +60,6 @@ uniform sampler2D skin_height : filter_linear_mipmap, repeat_enable, hint_defaul
 uniform sampler2D fabric_height : filter_linear_mipmap, repeat_enable, hint_default_white;
 uniform sampler2D leather_height : filter_linear_mipmap, repeat_enable, hint_default_white;
 uniform sampler2D soft_height : filter_linear_mipmap, repeat_enable, hint_default_white;
-
-uniform vec3 rim_color : source_color = vec3(1.0, 0.95, 0.88);
-uniform float rim_strength : hint_range(0.0, 2.0) = 0.42;
 
 varying vec4 rest;
 
@@ -319,8 +318,5 @@ void fragment() {
 	NORMAL = bump_normal(NORMAL, VERTEX, height);
 	// Skin lets a little light through at grazing angles and from behind.
 	BACKLIGHT = vec3(0.3, 0.1, 0.06) * is_skin * skin_tint;
-	RIM = rim_strength;
-	RIM_TINT = 0.35;
-	float fresnel = pow(1.0 - clamp(dot(NORMAL, VIEW), 0.0, 1.0), 3.0);
-	EMISSION = glow + color * rim_color * fresnel * 0.1;
+	EMISSION = glow;
 }

@@ -13,9 +13,10 @@ const SHADER_PATH := "res://shaders/stylized_pbr.gdshader"
 const TEXTURES_DIR := "res://assets/textures/"
 const _SCANS := {Surface.MASONRY: "concrete_normal", Surface.RUBBER: "rubber_normal"}
 const _DETAIL_SCANS := {Surface.LEATHER: "leather_normal", Surface.FABRIC: "fabric_normal"}
-## Rim light every stylized surface gets: a soft, slightly warm edge where light grazes.
-## Broad flat masonry takes far less of it than props and bodies, or walls start to shine.
-const RIM := 0.3
+## Rim light of the stylized shaders: a soft, slightly warm edge where light grazes. On
+## StandardMaterial3D the engine's rim widens with roughness until it covers the whole
+## surface, so there it is kept for glossy finishes only (see `standard`).
+const RIM := 0.45
 const RIM_TINT := 0.4
 const _RIM_SHARE := {Surface.PLAIN: 1.0, Surface.SKIN: 1.15, Surface.FABRIC: 0.7, Surface.LEATHER: 1.0, Surface.METAL: 0.5, Surface.RUBBER: 0.7, Surface.MASONRY: 0.2}
 
@@ -103,9 +104,10 @@ static func standard(color: Color, roughness: float, metallic: float, surface: S
 			material.detail_albedo = _texel(Color(color.r, color.g, color.b, 0.5))
 		material.roughness_texture = roughness_map(surface)
 		material.roughness_texture_channel = BaseMaterial3D.TEXTURE_CHANNEL_RED
-		material.rim_enabled = true
-		material.rim = RIM * (_RIM_SHARE[surface] as float)
-		material.rim_tint = RIM_TINT
+		if roughness <= 0.6:
+			material.rim_enabled = true
+			material.rim = 0.3 * (_RIM_SHARE[surface] as float)
+			material.rim_tint = RIM_TINT
 		if metallic > 0.5:
 			material.metallic_specular = 0.6
 	_materials[key] = material
@@ -173,7 +175,11 @@ static func convert(source: Material, tint: Color = Color.WHITE, surface: Surfac
 	material.resource_name = source.resource_name
 	material.set_shader_parameter("albedo", base.albedo_color)
 	material.set_shader_parameter("tint", Color(tint.r, tint.g, tint.b))
-	if base.albedo_texture != null:
+	# A swatch of pixel noise over a colour factor (some packs ship one) reads as brickwork at
+	# this scale: the factor is the real colour, so the swatch is dropped. Palette atlases
+	# are larger and sit under a white factor, and are kept.
+	var swatch := base.albedo_texture != null and maxi(base.albedo_texture.get_width(), base.albedo_texture.get_height()) <= 64 and not base.albedo_color.is_equal_approx(Color.WHITE)
+	if base.albedo_texture != null and not swatch:
 		material.set_shader_parameter("albedo_tex", base.albedo_texture)
 	material.set_shader_parameter("roughness", base.roughness)
 	material.set_shader_parameter("metallic", base.metallic)
@@ -199,7 +205,7 @@ static func convert(source: Material, tint: Color = Color.WHITE, surface: Surfac
 	material.set_shader_parameter("detail_height", height_map(surface))
 	material.set_shader_parameter("detail_tiling", recipe["tiling"])
 	material.set_shader_parameter("detail_bump", recipe["depth"])
-	material.set_shader_parameter("rim_strength", RIM * (0.5 if base.metallic > 0.5 else 1.0))
+	material.set_shader_parameter("rim_strength", RIM * (0.6 if base.metallic > 0.5 else 1.0))
 	material.set_shader_parameter("rim_tint", RIM_TINT)
 	_converted[key] = material
 	return material

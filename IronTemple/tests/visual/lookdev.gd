@@ -221,3 +221,21 @@ func armside() -> void:
 	_cam(Vector3(0.0, 1.75, -1.6), Vector3(0.0, 1.4, -0.3), 40.0)
 	await _shot("armside_front")
 	get_tree().quit()
+
+## Every library prop the world places, at the size it is placed at, with a 1.8 m figure for scale.
+func props() -> void:
+	var cars := ["street/car_sedan", "street/car_taxi", "street/car_suv", "street/car_hatchback", "street/car_van", "street/car_police"]
+	for i in cars.size():
+		var car := ModelLoader.instantiate(cars[i], 4.3, {"fit": ModelLoader.Fit.LONGEST})
+		car.position = Vector3(-8.0 + 3.2 * i, 0, -3.5)
+		add_child(car)
+	var small := [["street/fire_hydrant", 0.8], ["street/litter_bin", 1.0], ["street/traffic_cone", 0.7], ["street/bench_street", 0.9], ["gym/potted_plant", 1.5], ["gym/water_cooler", 1.35], ["gym/fan_standing", 1.5], ["gym/radio_boombox", 0.34], ["gym/trashcan", 0.7], ["gym/medicine_ball_rack", 1.1], ["gym/water_bottle", 0.26]]
+	for i in small.size():
+		var prop := ModelLoader.instantiate(small[i][0], small[i][1])
+		prop.position = Vector3(-7.7 + 1.4 * i, 0, 1.2)
+		add_child(prop)
+		print(small[i][0], " fallback=", ModelLoader.is_fallback(prop), " size=", prop.get_meta("model_size", Vector3.ZERO))
+	_model(Vector3(-9.2, 0, 1.2), 180, {})
+	_cam(Vector3(0, 4.2, 12.5), Vector3(0, 0.6, -0.6), 44.0)
+	await _shot("props")
+	get_tree().quit()

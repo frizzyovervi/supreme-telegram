@@ -1,9 +1,12 @@
 shader_type spatial;
 // Unified stylized PBR pass for imported models: the source albedo/normal/ORM maps are kept, then a
-// shared layer of micro surface noise and a light-driven Fresnel rim is laid over them, so models
+// shared layer of micro surface noise and the stylized lighting (wrapped diffuse, GGX highlights
+// and a light-driven Fresnel rim, see stylized_light.gdshaderinc) is laid over them, so models
 // from different packs read as one art style. No tangents are needed: the detail bump is derived
 // in screen space from an object-space triplanar height.
-render_mode blend_mix, depth_draw_opaque, cull_back, diffuse_burley, specular_schlick_ggx;
+render_mode blend_mix, depth_draw_opaque, cull_back;
+
+#include "res://shaders/stylized_light.gdshaderinc"
 
 uniform vec4 albedo : source_color = vec4(1.0);
 uniform sampler2D albedo_tex : source_color, filter_linear_mipmap_anisotropic, repeat_enable, hint_default_white;
@@ -28,11 +31,6 @@ uniform sampler2D detail_height : filter_linear_mipmap, repeat_enable, hint_defa
 uniform float detail_tiling = 3.0;
 uniform float detail_bump = 0.35;
 uniform float detail_roughness = 0.12;
-uniform vec3 rim_color : source_color = vec3(1.0, 0.96, 0.9);
-uniform float rim_strength : hint_range(0.0, 2.0) = 0.35;
-uniform float rim_tint : hint_range(0.0, 1.0) = 0.35;
-// Soft view-facing sheen so shapes keep a readable edge in shade as well.
-uniform float edge_sheen : hint_range(0.0, 1.0) = 0.12;
 
 varying vec3 object_pos;
 varying vec3 object_normal;
@@ -92,8 +90,5 @@ void fragment() {
 	METALLIC = metal;
 	SPECULAR = specular;
 
-	float fresnel = pow(1.0 - clamp(dot(NORMAL, VIEW), 0.0, 1.0), 3.0);
-	RIM = rim_strength;
-	RIM_TINT = rim_tint;
-	EMISSION = texture(emission_tex, UV).rgb * emission * emission_energy + ALBEDO * rim_color * fresnel * edge_sheen;
+	EMISSION = texture(emission_tex, UV).rgb * emission * emission_energy;
 }

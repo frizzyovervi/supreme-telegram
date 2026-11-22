@@ -49,7 +49,7 @@ var _plaza_z := 0.0
 
 ## Models for the parked cars and the kerb furniture ([id, height in metres]); see ModelLoader.
 const CAR_MODELS: Array[String] = ["street/car_sedan", "street/car_taxi", "street/car_suv", "street/car_hatchback", "street/car_van", "street/car_police"]
-const KERB_MODELS: Array = [["street/fire_hydrant", 0.8], ["street/litter_bin", 1.0], ["street/post_box", 1.25], ["street/traffic_cone", 0.7], ["street/bench_street", 0.9]]
+const KERB_MODELS: Array = [["street/fire_hydrant", 0.8], ["street/litter_bin", 1.0], ["street/bench_street", 0.9], ["street/traffic_cone", 0.7]]
 
 
 func _ready() -> void:

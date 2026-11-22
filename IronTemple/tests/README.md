@@ -74,7 +74,8 @@ them. Drawing is switched off between shots, so only the frames that are saved g
 
 `visual/lookdev.tscn` is a neutral stage for the Step 6 art: `--set=bodies` (physique range), `fighters`
 (the five ladder looks), `poses` and `workouts` (the rig in every fight and lifting pose), `arms` (the
-first-person view model bare, wrapped and gloved) and `armside` (the arms seen from outside). It takes the
+first-person view model bare, wrapped and gloved), `armside` (the arms seen from outside) and `props`
+(every library model the world places, at its placed size). It takes the
 same display and renderer flags as the tour: `res://tests/visual/lookdev.tscn -- --out=/tmp/look --set=fighters`.
 
 The models have to be imported once before any runner starts (`godot --headless --path . --import`, or

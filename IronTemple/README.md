@@ -574,7 +574,9 @@ ModelLoader.list("gym")             # every model in a folder; drop a new .glb i
 
 It measures the model's bounding box, scales it to the height asked for, puts the pivot at floor level and
 turns it to face -Z, then replaces its materials with the stylized PBR pass
-(`shaders/stylized_pbr.gdshader`: the model's own maps, micro surface noise and a light-driven Fresnel rim).
+(`shaders/stylized_pbr.gdshader`: the model's own maps, micro surface noise and the shared stylized
+lighting in `shaders/stylized_light.gdshaderinc`: wrapped diffuse, GGX highlights and a light-driven Fresnel
+rim whose width does not grow with roughness, so matte models keep their colour).
 It reads the editor's import when there is one and parses the raw file when there is not. If a file is
 missing or invalid it returns a multi-part procedural stand-in from `ModelFallbacks` instead, and the
 bodies and arms fall back to the Step 1 to 5 primitive ones: with `assets/` deleted the game still runs and
@@ -588,7 +590,7 @@ directional shadow map and positional atlas, soft shadow filter quality 3, deban
 filtering, high-quality SSAO. `Build.mat` now goes through `Stylized.standard`, so every flat-colour surface
 in the world gets a `NoiseTexture2D` normal map and roughness map chosen from its gloss and metalness
 (brushed metal, cloth weave, leather grain, skin pores, mottled masonry), triplanar so no UVs are needed,
-plus the shared rim light. Where the scanned maps in `assets/textures/` are present, concrete and rubber
+plus the engine's rim on glossy finishes. Where the scanned maps in `assets/textures/` are present, concrete and rubber
 use them and leather and cloth layer them over the procedural normal as fine detail.
 
 **First-person arms.** `PlayerArms` keeps its two-bone solve and every hand target, and now drives an
@@ -652,7 +654,7 @@ scripts/visual/character_rig.gd     CharacterRig
 scripts/player/arms_rig.gd          ArmsRig
 scripts/player/viewmodel.gd         Viewmodel
 scripts/combat/fighter_look.gd      FighterLook
-shaders/stylized_pbr.gdshader, shaders/character_body.gdshader
+shaders/stylized_pbr.gdshader, shaders/character_body.gdshader, shaders/stylized_light.gdshaderinc
 ```
 
 ## Scripts
